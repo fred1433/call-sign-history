@@ -151,6 +151,7 @@ a:focus-visible,button:focus-visible{outline:3px solid var(--link);outline-offse
 .listing .lab{display:none;font-weight:600;color:var(--ink-2)}
 .listing .bad{color:var(--needle);font-weight:600}
 .listing .why{color:var(--ink-2);font-size:13px;line-height:1.45}
+.listing .ln .on{font-weight:600}
 .more{margin-top:12px;appearance:none;background:none;border:0;padding:6px 0;font:600 15px "Public Sans";color:var(--link);cursor:pointer;text-decoration:underline;text-underline-offset:3px}
 
 .hard{margin-top:44px;background:var(--sheet);border:1px solid var(--rule);border-left:4px solid var(--amber);border-radius:2px;padding:22px 24px}
@@ -480,7 +481,7 @@ Linked, wrong facility                           0
     if (state === 'today|0') {
       T.d.forEach((d, i) => { if (d[0] === 'L' && d[1] !== D.lines[i][4]) rows.push(i); });
       title = `${fmt(rows.length)} lines the today rule links to another facility`;
-      hint = 'Next to each, what the dated rule decides, and why.';
+      hint = 'Next to each, what the dated rule decides instead. The reason is the one the today rule writes into the decisions file.';
     } else {
       c.d.forEach((d, i) => { const o = T.d[i]; if (d[0] !== o[0] || d[1] !== o[1]) rows.push(i); });
       title = `${fmt(rows.length)} lines change between the today rule and this one`;
@@ -493,10 +494,12 @@ Linked, wrong facility                           0
     document.getElementById('ch-hint').textContent = hint;
     const shown = showAll ? rows : rows.slice(0, 12);
     const oname = state === 'today|0' ? 'Dated' : (state === 'dated|1' ? 'Dated, undated accepted' : 'Dated');
-    listing.innerHTML = `<div class="head"><span>Line, as printed</span><span>Today</span><span>${oname}</span><span>Reason written by the ${oname.toLowerCase()} rule</span></div>` +
+    const active = state === 'today|0' ? 'today' : oname.toLowerCase();
+    listing.innerHTML = `<div class="head"><span>Line, as printed</span><span>Today</span><span>${oname}</span><span>Reason written by the ${active} rule</span></div>` +
       shown.map(i => {
         const L = D.lines[i], a = T.d[i], b = other.d[i];
-        return `<div class="ln"><span class="t">${L[1]}<small>${L[2]}, ${L[3]}, page ${L[5]}</small></span><span><span class="lab">Today:</span>${said(a, L[4])}</span><span><span class="lab">${oname}:</span>${said(b, L[4])}</span><span class="why">${b[3]}</span></div>`;
+        const why = state === 'today|0' ? a[3] : b[3];
+        return `<div class="ln"><span class="t">${L[1]}<small>${L[2]}, ${L[3]}, page ${L[5]}</small></span><span class="${state === 'today|0' ? 'on' : ''}"><span class="lab">Today:</span>${said(a, L[4])}</span><span class="${state === 'today|0' ? '' : 'on'}"><span class="lab">${oname}:</span>${said(b, L[4])}</span><span class="why">${why}</span></div>`;
       }).join('');
     more.hidden = rows.length <= 12;
     more.textContent = showAll ? 'Show the first 12' : `Show all ${fmt(rows.length)}`;
