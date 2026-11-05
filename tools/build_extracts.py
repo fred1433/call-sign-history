@@ -16,10 +16,13 @@ import csv, json, re, sys
 from pathlib import Path
 
 RAW = Path(sys.argv[1])
+# CDBS numbers each facility's call signs in sequence; that order is kept (see README).
 OUT = Path(__file__).resolve().parent.parent / "data"
 OUT.mkdir(exist_ok=True)
 
-LINE_RE = re.compile(r"^\s*([A-Z0-9][A-Z0-9()\- ]{2,14}?)\s{2,}(\d{1,7})\s{2,}(.+?),\s*([A-Z]{2})\s+(\S+)?\s*$")
+ROW_RE = re.compile(r"^\s*([A-Z0-9][A-Za-z0-9()\- ]{2,14}?)\s{2,}(\d{1,7})\s{2,}(\S.*?)\s*$")
+STATE_RE = re.compile(r"^(.*?),?\s+([A-Za-z]{2})$")
+FILE_RE = re.compile(r"^(.*?)\s{2,}((?:\d{8})?[A-Z]{3})$")
 
 
 def us_date(s):
@@ -28,20 +31,42 @@ def us_date(s):
     return f"{m[3]}-{m[1]}-{m[2]}" if m else ""
 
 
+def broadcast_table(pages):
+    """Pages 19 to 41 of FCC 08-3 hold Appendix A. Its broadcast table ends where the
+    Part 25 (satellite) table starts on page 41."""
+    for pno in range(19, 42):
+        text = pages[pno - 1]
+        if "Part 25" in text:
+            text = text[:text.index("Part 25")]
+        yield pno, text.splitlines()
+
+
 def build_lot():
     pages = (RAW / "FCC-08-3A1.txt").read_text().split("\f")
-    lot, answers = [], []
-    # Appendix A ("Licenses Subject To Transfer Of Control") runs from page 19 to page 41.
-    for pno in range(19, 42):
-        for raw_line in pages[pno - 1].splitlines():
-            m = LINE_RE.match(raw_line)
+    lot, answers, expected = [], [], 0
+    for pno, lines in broadcast_table(pages):
+        for i, raw_line in enumerate(lines):
+            m = ROW_RE.match(raw_line)
             if not m:
                 continue
-            call, fid, city, state, filesuffix = m.groups()
+            expected += 1                      # counted before any parsing of the city
+            call, fid, rest = m.groups()
+            f = FILE_RE.match(rest)
+            place = f[1] if f else rest
+            st = STATE_RE.match(place.strip())
+            if not st and i + 1 < len(lines) and not ROW_RE.match(lines[i + 1]):
+                place = place.strip() + " " + lines[i + 1].strip()      # city printed on two lines
+                st = STATE_RE.match(place)
+            if not st:
+                raise SystemExit(f"page {pno}: cannot read the place on line {raw_line!r}")
+            city, state = st[1].strip().rstrip(","), st[2].upper()
             line_id = f"A{len(lot) + 1:04d}"
             lot.append({"line_id": line_id, "page": pno, "printed_call": call.strip(),
-                        "city": city.strip(), "state": state})
+                        "city": city, "state": state, "printed_state": st[2]})
             answers.append({"line_id": line_id, "facility_id_printed": fid})
+    ids = [a["facility_id_printed"] for a in answers]
+    if len(lot) != expected or len(set(ids)) != expected:
+        raise SystemExit(f"lost lines: {expected} rows with a facility ID, {len(lot)} parsed, {len(set(ids))} distinct IDs")
     write(OUT / "lot_fcc08-3_appendix_a.csv", lot)
     write(OUT / "answers_fcc08-3_appendix_a.csv", answers)
     return lot
@@ -53,6 +78,8 @@ def build_registry():
         d = json.loads(l)
         if d.get("_error") or d.get("_missing"):
             raise SystemExit(f"incomplete download: {d}")
+        if int(d["id"]) <= 0:
+            continue                           # the service lists two test records, -11 AM123 and -10 FM123
         rows.append({"facility_id": d["id"], "call_sign": d["callSign"], "service": d["serviceCode"],
                      "status": d["status"], "city": d["communityCity"], "state": d["communityState"],
                      "frequency": d["frequency"], "active": d["activeInd"]})
@@ -77,7 +104,8 @@ def build_timeline():
         hist.setdefault(c[4], []).append((int(c[3] or 0), c[1].strip(), us_date(c[0])))
     rows = []
     for fid, f in fac.items():
-        entries = [(s, call, d, "cdbs_history") for s, call, d in sorted(hist.get(fid, []))]
+        ordered = sorted(hist.get(fid, []))
+        entries = [(i + 1, call, d, "cdbs_history") for i, (s, call, d) in enumerate(ordered)]
         cur = (len(entries) + 1, f["call"], f["eff"], "cdbs_current")
         if entries and entries[-1][1] == cur[1]:
             last = entries.pop()
@@ -94,14 +122,14 @@ def build_timeline():
 def build_wikidata():
     seen, rows = set(), []
     for r in csv.DictReader(open(RAW / "wikidata_p1400_p2317.csv")):
-        if not r["web"]:
-            continue
+        if not r["web"] or not r["fid"].isdigit():
+            continue                           # P1400 values such as "100097-5" are not FCC facility IDs
         key = (r["fid"], r["item"], r["web"])
         if key in seen:
             continue
         seen.add(key)
         rows.append({"facility_id": r["fid"], "wikidata_item": r["item"].rsplit("/", 1)[-1], "website": r["web"]})
-    rows.sort(key=lambda r: (r["facility_id"], r["wikidata_item"], r["website"]))
+    rows.sort(key=lambda r: (int(r["facility_id"]), r["wikidata_item"], r["website"]))
     write(OUT / "wikidata_websites_2026-11-05.csv", rows)
 
 

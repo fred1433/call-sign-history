@@ -1,5 +1,4 @@
-// Gabarit : remplacer call-sign-history. Sert site/ sous https://theaipipe.com/demos/call-sign-history/ (static files only).
-// The route is more specific than the galerie-presell route theaipipe.com/demos/*, so it wins.
+// Serves site/ under https://theaipipe.com/demos/call-sign-history/ (static files only).
 const BASE = '/demos/call-sign-history';
 export default {
   async fetch(request, env) {
