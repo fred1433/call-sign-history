@@ -473,7 +473,7 @@ Linked, wrong facility                           0
     } else {
       const f = c.fate;
       cost.innerHTML = `Of the <b>${fmt(tw)}</b> mismatches, the dated rule corrected <b>${fmt(f.corrected || 0)}</b> and flagged <b>${fmt(f['flagged for review'] || 0)}</b> for review. ` +
-        `The price: the review queue goes from ${fmt(trv)} to <b>${fmt(rv)}</b>, and the printed facility is among the candidates in ${fmt(rvok)} of those ${fmt(rv)}.`;
+        `${rv > trv ? 'The price: the' : 'The'} review queue holds ${fmt(trv)} lines under the today rule and <b>${fmt(rv)}</b> under this one; the printed facility is among the candidates in ${fmt(rvok)} of those ${fmt(rv)}.`;
     }
 
     const rows = [];
